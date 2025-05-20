@@ -54,6 +54,16 @@ class Chunk(BaseModel):
     content: Content
     type: ChunkType
     metadata: Dict[str, Any] = {}
+    
+    def get_content(self) -> str:
+        base_str = ""
+        if self.title:
+            base_str += f"\nTitle: {self.title.text}\n"
+        if self.parent_title:
+            base_str += f"Parent Title: {self.parent_title.text}\n"
+        if self.content:
+            base_str += f"Content: {self.content.text}\n"
+        return base_str
      
     def __str__(self):
         base_str = ""
