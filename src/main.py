@@ -1,4 +1,4 @@
-import os
+import json
 from langchain_community.vectorstores import FAISS
 from langchain_openai import OpenAI
 from langchain.chains import RetrievalQA
@@ -41,6 +41,23 @@ if __name__ == "__main__":
             print(f"\nChunk {metadata['chunk_id']}:")
             if "title" in metadata:
                 print(f"Section: {metadata['title']['text']}")
-                print
+                
+            highlights = []
+            
+            # Add title highlight
+            if "title" in metadata:
+                highlights.append({
+                    "pageIndex": metadata["title"]["page"],
+                    "bbox": metadata["title"]["bbox"],
+                    "pageHeight": 792
+                })
+            
+            # Add citation highlights
             for citation in metadata["citations"]:
-                print(f"- Page {citation['page']} (bbox: {citation['bbox']})")
+                highlights.append({
+                    "pageIndex": citation["page"],
+                    "bbox": citation["bbox"],
+                    "pageHeight": 792
+                })
+                
+            print(json.dumps(highlights))

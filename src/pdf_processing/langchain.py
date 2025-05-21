@@ -10,14 +10,22 @@ def create_langchain_documents(chunks: List[Chunk]) -> List[Document]:
         metadata = {
             "chunk_id": chunk.chunk_id,
             "type": chunk.type,
-            "citations": [{"page": cit.page, "bbox": cit.bbox.model_dump()} for cit in chunk.content.citations]
+            "citations": [{"page": cit.page, "bbox": [cit.bbox.x0, cit.bbox.y0, cit.bbox.x1, cit.bbox.y1]} for cit in chunk.content.citations]
         }
         
         if chunk.title:
-            metadata["title"] = chunk.title.model_dump()
+            metadata["title"] = {
+                "text": chunk.title.text,
+                "page": chunk.title.page,
+                "bbox": [chunk.title.bbox.x0, chunk.title.bbox.y0, chunk.title.bbox.x1, chunk.title.bbox.y1]
+            }
         
         if chunk.parent_title:
-            metadata["parent_title"] = chunk.parent_title.model_dump()
+            metadata["parent_title"] = {
+                "text": chunk.parent_title.text,
+                "page": chunk.parent_title.page,
+                "bbox": [chunk.parent_title.bbox.x0, chunk.parent_title.bbox.y0, chunk.parent_title.bbox.x1, chunk.parent_title.bbox.y1]
+            }
         
         doc = Document(
             page_content=chunk.get_content(),
