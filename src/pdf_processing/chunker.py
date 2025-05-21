@@ -113,8 +113,8 @@ def chunk_json_output(json_output: JSONOutput, max_chunk_size: int = 1000, overl
                         del parent_titles[level]
                         
             elif block.block_type == str(BlockTypes.Footnote):
-                current_chunk = create_footnote_chunk(block, len(chunks)+1)
-                chunks.append(current_chunk)
+                footnote_chunk = create_footnote_chunk(block, len(chunks)+1)
+                chunks.append(footnote_chunk)
             elif block.block_type in [str(BlockTypes.Text), str(BlockTypes.ListItem)] and current_chunk:
                 # Calculate new token count before appending
                 new_text = current_chunk.content.text + " " + parse_html_text(block.html)
