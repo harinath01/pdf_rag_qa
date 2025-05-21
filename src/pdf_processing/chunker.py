@@ -12,7 +12,7 @@ class ChunkType(str, Enum):
     FOOTNOTE = "footnote"
     TABLE = "table"
     PARAGRAPH = "paragraph"
-    
+    LIST_ITEM = "list_item"
 class BoundingBox(BaseModel):
     x0: float
     y0: float
@@ -119,10 +119,10 @@ def chunk_json_output(json_output: JSONOutput, max_chunk_size: int = 1000) -> Li
                 semantic_chunks = create_semantic_chunks(footnote_text, max_chunk_size, chunker)
                 
                 for i, chunk_data in enumerate(semantic_chunks):
-                    footnote_chunk = create_footnote_chunk(block, len(chunks)+1)
+                    footnote_chunk = create_footnote_chunk(block, chunk_data["text"], chunk_counter=len(chunks)+1)
                     chunks.append(footnote_chunk)
                     
-            elif block.block_type in [str(BlockTypes.Text), str(BlockTypes.ListItem), str(BlockTypes.TextInlineMath), str(BlockTypes.Equation)] and current_chunk:
+            elif block.block_type in [str(BlockTypes.Text), str(BlockTypes.TextInlineMath), str(BlockTypes.Equation)] and current_chunk:
                 # Calculate new token count before appending
                 new_text = current_chunk.content.text + "\n" + parse_html_text(block.html)
                 semantic_chunks = create_semantic_chunks(new_text, max_chunk_size, chunker)
@@ -153,6 +153,10 @@ def chunk_json_output(json_output: JSONOutput, max_chunk_size: int = 1000) -> Li
                     )
                     if new_citation not in current_chunk.content.citations:
                         current_chunk.content.citations.append(new_citation)
+            elif block.block_type == str(BlockTypes.ListGroup):
+                list_items = create_chunks_from_list_group(block, current_chunk, max_chunk_size, len(chunks)+1, chunker)
+                for item in list_items:
+                    chunks.append(item)    
             
     return chunks
 
@@ -183,8 +187,7 @@ def create_section_chunk(block: JSONBlockOutput, chunk_counter: int, level: int,
         type=ChunkType.SECTION,
     )
 
-def create_footnote_chunk(block: JSONBlockOutput, chunk_counter: int) -> Chunk:
-    content_text = parse_html_text(block.html)
+def create_footnote_chunk(block: JSONBlockOutput, content_text: str, chunk_counter: int) -> Chunk:
     return Chunk(
         chunk_id=f"chunk_{chunk_counter:03d}",
         title=None,
@@ -200,6 +203,22 @@ def create_footnote_chunk(block: JSONBlockOutput, chunk_counter: int) -> Chunk:
         type=ChunkType.FOOTNOTE
     )
 
+def create_chunks_from_list_group(block: JSONBlockOutput, current_chunk: Chunk, max_chunk_size: int, chunk_counter: int, chunker: SemanticChunker):
+    list_items = []
+    for item in block.children:
+        if item.block_type == str(BlockTypes.ListItem):
+            list_item_text = parse_html_text(item.html)
+            semantic_chunks = create_semantic_chunks(list_item_text, max_chunk_size, chunker)
+            for i, chunk_data in enumerate(semantic_chunks):
+                list_items.append(Chunk(
+                    chunk_id=f"chunk_{chunk_counter:03d}",
+                    title=current_chunk.title,
+                    parent_title=current_chunk.parent_title,
+                    content=Content(text=chunk_data["text"], citations=[], token_count=chunk_data["token_count"]),
+                    type=ChunkType.LIST_ITEM
+                ))
+                chunk_counter += 1
+    return list_items
 
     
 def convert_bbox_to_dict(bbox: List[float]) -> Dict[str, float]:
