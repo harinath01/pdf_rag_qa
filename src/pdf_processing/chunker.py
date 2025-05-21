@@ -73,14 +73,16 @@ class Chunk(BaseModel):
             base_str += f"Parent Title: {self.parent_title.text}\n"
         if self.content:
             base_str += f"Content: {self.content.text}\n"
-        if self.type:
-            base_str += f"Type: {self.type}\n"
+        # if self.content.citations:
+        #     base_str += f"Citations: {self.content.citations}\n"
+        # if self.type:
+        #     base_str += f"Type: {self.type}\n"
         if self.metadata:
             base_str += f"Metadata: {self.metadata}\n"
         return base_str
         
         
-def chunk_json_output(json_output: JSONOutput, max_chunk_size: int = 1000, overlap: int = 100) -> List[Chunk]:
+def chunk_json_output(json_output: JSONOutput, max_chunk_size: int = 1000) -> List[Chunk]:
     chunks = []
     current_chunk = None
     parent_titles = {}
@@ -113,40 +115,36 @@ def chunk_json_output(json_output: JSONOutput, max_chunk_size: int = 1000, overl
                         del parent_titles[level]
                         
             elif block.block_type == str(BlockTypes.Footnote):
-                footnote_chunk = create_footnote_chunk(block, len(chunks)+1)
-                chunks.append(footnote_chunk)
-            elif block.block_type in [str(BlockTypes.Text), str(BlockTypes.ListItem)] and current_chunk:
-                # Calculate new token count before appending
-                new_text = current_chunk.content.text + " " + parse_html_text(block.html)
-                new_token_count = count_tokens(new_text)
+                footnote_text = parse_html_text(block.html)
+                semantic_chunks = create_semantic_chunks(footnote_text, max_chunk_size, chunker)
                 
-                # Check if we need to split the content
-                if new_token_count > max_chunk_size:
-                    # Use SemanticChunker to split content
-                    semantic_chunks = chunker.chunk(new_text)
+                for i, chunk_data in enumerate(semantic_chunks):
+                    footnote_chunk = create_footnote_chunk(block, len(chunks)+1)
+                    chunks.append(footnote_chunk)
                     
-                    # Create new chunks for each semantic chunk
-                    for i, semantic_chunk in enumerate(semantic_chunks):
-                        if i == 0:
-                            # Update current chunk with first semantic chunk
-                            current_chunk.content.text = semantic_chunk.text
-                            current_chunk.content.token_count = semantic_chunk.token_count
-                        else:
-                            # Create new chunk for remaining semantic chunks
-                            new_chunk = create_section_chunk(
-                                text=semantic_chunk.text,
-                                bbox=block.bbox,
-                                page_number=get_page_number(block.id),
-                                chunk_type=current_chunk.type,
-                                title=current_chunk.title,
-                                parent_title=current_chunk.parent_title
-                            )
-                            chunks.append(new_chunk)
-                            current_chunk = new_chunk
-                else:
-                    # If within token limit, append content
-                    current_chunk.content.text = new_text
-                    current_chunk.content.token_count = new_token_count
+            elif block.block_type in [str(BlockTypes.Text), str(BlockTypes.ListItem), str(BlockTypes.TextInlineMath), str(BlockTypes.Equation)] and current_chunk:
+                # Calculate new token count before appending
+                new_text = current_chunk.content.text + "\n" + parse_html_text(block.html)
+                semantic_chunks = create_semantic_chunks(new_text, max_chunk_size, chunker)
+                
+                # Create new chunks for each semantic chunk
+                for i, chunk_data in enumerate(semantic_chunks):
+                    if i == 0:
+                        # Update current chunk with first semantic chunk
+                        current_chunk.content.text = chunk_data["text"]
+                        current_chunk.content.token_count = chunk_data["token_count"]
+                    else:
+                        # Create new chunk for remaining semantic chunks
+                        new_chunk = create_section_chunk(
+                            text=chunk_data["text"],
+                            bbox=block.bbox,
+                            page_number=get_page_number(block.id),
+                            chunk_type=current_chunk.type,
+                            title=current_chunk.title,
+                            parent_title=current_chunk.parent_title
+                        )
+                        chunks.append(new_chunk)
+                        current_chunk = new_chunk
                     
                     # Add new citation if it doesn't exist
                     new_citation = Citation(
@@ -157,6 +155,14 @@ def chunk_json_output(json_output: JSONOutput, max_chunk_size: int = 1000, overl
                         current_chunk.content.citations.append(new_citation)
             
     return chunks
+
+
+def create_semantic_chunks(text: str, max_chunk_size: int, chunker: SemanticChunker) -> List[Dict[str, Any]]:
+    if count_tokens(text) <= max_chunk_size:
+        return [{"text": text, "token_count": count_tokens(text)}]
+    
+    semantic_chunks = chunker.chunk(text)
+    return [{"text": chunk.text, "token_count": chunk.token_count} for chunk in semantic_chunks]
             
 
 def create_section_chunk(block: JSONBlockOutput, chunk_counter: int, level: int, parent_title: Optional[Title] = None) -> Chunk:
@@ -171,7 +177,7 @@ def create_section_chunk(block: JSONBlockOutput, chunk_counter: int, level: int,
         parent_title=parent_title, 
         content=Content(
             text="",
-            citations=[],  # Initialize empty citations
+            citations=[],
             token_count=0
         ),
         type=ChunkType.SECTION,
