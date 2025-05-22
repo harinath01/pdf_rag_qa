@@ -6,7 +6,7 @@ from bs4 import BeautifulSoup
 from marker.renderers.json import JSONOutput, JSONBlockOutput
 from marker.schema import BlockTypes
 from chonkie.chunker.semantic import SemanticChunker
-
+from marker.output import json_to_html
 class ChunkType(str, Enum):
     SECTION = "section"
     FOOTNOTE = "footnote"
@@ -204,21 +204,27 @@ def create_footnote_chunk(block: JSONBlockOutput, content_text: str, chunk_count
     )
 
 def create_chunks_from_list_group(block: JSONBlockOutput, current_chunk: Chunk, max_chunk_size: int, chunk_counter: int, chunker: SemanticChunker):
-    list_items = []
-    for item in block.children:
-        if item.block_type == str(BlockTypes.ListItem):
-            list_item_text = parse_html_text(item.html)
-            semantic_chunks = create_semantic_chunks(list_item_text, max_chunk_size, chunker)
-            for i, chunk_data in enumerate(semantic_chunks):
-                list_items.append(Chunk(
-                    chunk_id=f"chunk_{chunk_counter:03d}",
-                    title=current_chunk.title,
-                    parent_title=current_chunk.parent_title,
-                    content=Content(text=chunk_data["text"], citations=[], token_count=chunk_data["token_count"]),
-                    type=ChunkType.LIST_ITEM
-                ))
-                chunk_counter += 1
-    return list_items
+    chunks = []
+    html = json_to_html(block)
+    text = parse_html_text(html)
+    semantic_chunks = create_semantic_chunks(text, max_chunk_size, chunker)
+    for i, chunk_data in enumerate(semantic_chunks):
+        if i == 0:
+            current_chunk.content.text = chunk_data["text"]
+            current_chunk.content.token_count = chunk_data["token_count"]
+            current_chunk.content.citations.append(Citation(
+                bbox=BoundingBox(**convert_bbox_to_dict(block.bbox)),
+                page=get_page_number(block.id)
+            ))
+        else:   
+            chunks.append(Chunk(
+                chunk_id=f"chunk_{chunk_counter+i:03d}",
+                title=current_chunk.title,
+                parent_title=current_chunk.parent_title,
+                content=Content(text=chunk_data["text"], citations=[], token_count=chunk_data["token_count"]),
+                type=ChunkType.LIST_ITEM
+            ))
+    return chunks
 
     
 def convert_bbox_to_dict(bbox: List[float]) -> Dict[str, float]:
