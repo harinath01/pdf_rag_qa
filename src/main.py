@@ -27,13 +27,16 @@ if __name__ == "__main__":
     qa = create_qa_chain(vector_store)
     
     while True:
+        print("-"*100)
         query = input("\nAsk a question (or type 'exit'): ")
         if query.strip().lower() == "exit":
             break
             
         answer = qa.invoke({"query": query})
+        print("-"*100)
         print("\nAnswer:", answer['result'])
         
+        print("-"*100)
         print("\nSources:")
         for doc in answer["source_documents"]:
             metadata = doc.metadata
@@ -41,7 +44,9 @@ if __name__ == "__main__":
             print(f"\nChunk {metadata['chunk_id']}:")
             if "title" in metadata:
                 print(f"Section: {metadata['title']['text']}")
-                
+            
+            
+            print("-"*100)
             highlights = []
             
             # Add title highlight
