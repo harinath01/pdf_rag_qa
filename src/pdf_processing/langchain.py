@@ -5,35 +5,41 @@ from langchain_openai import OpenAIEmbeddings
 from typing import List
 
 def create_langchain_documents(chunks: List[Chunk]) -> List[Document]:
-    documents = []
-    for chunk in chunks:
+    def create_citation_dict(citation) -> dict:
+        return {
+            "page": citation.page,
+            "bbox": [citation.bbox.x0, citation.bbox.y0, citation.bbox.x1, citation.bbox.y1]
+        }
+    
+    def create_title_dict(title) -> dict:
+        return {
+            "text": title.text,
+            "page": title.page,
+            "bbox": [title.bbox.x0, title.bbox.y0, title.bbox.x1, title.bbox.y1]
+        }
+    
+    def create_metadata(chunk: Chunk) -> dict:
         metadata = {
             "chunk_id": chunk.chunk_id,
             "type": chunk.type,
-            "citations": [{"page": cit.page, "bbox": [cit.bbox.x0, cit.bbox.y0, cit.bbox.x1, cit.bbox.y1]} for cit in chunk.content.citations]
+            "citations": [create_citation_dict(cit) for cit in chunk.content.citations]
         }
         
         if chunk.title:
-            metadata["title"] = {
-                "text": chunk.title.text,
-                "page": chunk.title.page,
-                "bbox": [chunk.title.bbox.x0, chunk.title.bbox.y0, chunk.title.bbox.x1, chunk.title.bbox.y1]
-            }
+            metadata["title"] = create_title_dict(chunk.title)
         
         if chunk.parent_title:
-            metadata["parent_title"] = {
-                "text": chunk.parent_title.text,
-                "page": chunk.parent_title.page,
-                "bbox": [chunk.parent_title.bbox.x0, chunk.parent_title.bbox.y0, chunk.parent_title.bbox.x1, chunk.parent_title.bbox.y1]
-            }
-        
-        doc = Document(
-            page_content=chunk.get_content(),
-            metadata=metadata
-        )
-        documents.append(doc)
+            metadata["parent_title"] = create_title_dict(chunk.parent_title)
+            
+        return metadata
     
-    return documents
+    return [
+        Document(
+            page_content=chunk.get_content(),
+            metadata=create_metadata(chunk)
+        )
+        for chunk in chunks
+    ]
 
 
 def create_vector_store(chunks: List[Chunk], save_path: str = "vector_store") -> FAISS:    
