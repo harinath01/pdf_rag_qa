@@ -1,54 +1,65 @@
 import json
 import argparse
-from langchain_community.vectorstores import FAISS
+from dotenv import load_dotenv
 from langchain_openai import OpenAI
 from langchain.chains import RetrievalQA
-from dotenv import load_dotenv
+from qdrant_client.models import Filter, FieldCondition, MatchValue
+from pdf_processing.vector_store import get_vector_store
 
-def create_qa_chain(vector_store: FAISS, top_k=1):
+def ask_question(pdf_id: str, question: str, top_k: int = 1) -> dict:
+    filter_condition = Filter(
+        must=[
+            FieldCondition(
+                key="metadata.pdf_id",
+                match=MatchValue(value=pdf_id)
+            )
+        ]
+    )
+    
+    vector_store = get_vector_store()
+    
     qa = RetrievalQA.from_chain_type(
         llm=OpenAI(),
-        retriever=vector_store.as_retriever(search_kwargs={"k": top_k}),
+        retriever=vector_store.as_retriever(
+            search_kwargs={
+                "k": top_k,
+                "filter": filter_condition
+            }
+        ),
         return_source_documents=True
     )
     
-    return qa
+    answer = qa.invoke({"query": question})
+    
+    return {
+        "answer": answer["result"],
+        "sources": answer["source_documents"]
+    }
 
 def format_source_document(doc):
     """Format a single source document for better readability."""
     metadata = doc.metadata
     output = []
     
-    # Add title if present
     if "title" in metadata:
         output.append(f"📑 Section: {metadata['title']['text']}")
     
-    # Add content
     output.append("\n📝 Content:")
     output.append(doc.page_content)
     
-    # Add chunk ID
     output.append(f"\n🔍 Chunk ID: {metadata['chunk_id']}")
     
     return "\n".join(output)
 
 if __name__ == "__main__":
-    from pdf_processing.parser import parse_pdf_to_json
-    from pdf_processing.chunker import chunk_json_output
-    from pdf_processing.langchain import create_vector_store
+    load_dotenv()
     
     # Set up argument parser
-    parser = argparse.ArgumentParser(description='PDF QA System')
-    parser.add_argument('pdf_path', help='Path to the PDF file')
-    parser.add_argument('--page_range', type=str, default=None, help='Page range to process (e.g., "1-10")')
-    parser.add_argument('--top-k', type=int, default=1)
-    args = parser.parse_args()
+    parser = argparse.ArgumentParser(description='Ask questions about a processed PDF')
+    parser.add_argument('pdf_id', help='PDF ID of the processed document')
+    parser.add_argument('--top-k', type=int, default=1, help='Number of similar documents to retrieve')
     
-    load_dotenv()
-    result = parse_pdf_to_json(args.pdf_path, page_range=args.page_range)
-    chunks = chunk_json_output(result)
-    vector_store = create_vector_store(chunks)
-    qa = create_qa_chain(vector_store, args.top_k)
+    args = parser.parse_args()
     
     while True:
         print("\n" + "="*80)
@@ -56,17 +67,17 @@ if __name__ == "__main__":
         if query.strip().lower() == "exit":
             break
             
-        answer = qa.invoke({"query": query})
+        result = ask_question(args.pdf_id, query, args.top_k)
         
         # Print answer
         print("\n" + "="*80)
         print("\n💡 Answer:")
-        print(answer['result'])
+        print(result['answer'])
         
         # Print sources
         print("\n" + "="*80)
         print("\n📚 Sources:")
-        for i, doc in enumerate(answer["source_documents"], 1):
+        for i, doc in enumerate(result['sources'], 1):
             print(f"\n[{i}] " + "-"*76)
             print(format_source_document(doc))
             
@@ -87,4 +98,4 @@ if __name__ == "__main__":
                 })
             
             print("\n📍 Highlights:")
-            print(json.dumps(highlights, indent=2))
+            print(json.dumps(highlights, indent=2)) 

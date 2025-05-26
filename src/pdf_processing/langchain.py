@@ -1,8 +1,9 @@
 from langchain.schema import Document
-from langchain_community.vectorstores import FAISS
+from langchain_community.vectorstores import Qdrant
 from pdf_processing.chunker import Chunk
-from langchain_openai import OpenAIEmbeddings
 from typing import List
+
+from src.pdf_processing.vector_store import get_vector_store
 
 def create_langchain_documents(chunks: List[Chunk]) -> List[Document]:
     def create_citation_dict(citation) -> dict:
@@ -42,10 +43,9 @@ def create_langchain_documents(chunks: List[Chunk]) -> List[Document]:
     ]
 
 
-def create_vector_store(chunks: List[Chunk], save_path: str = "vector_store") -> FAISS:    
+
+def store_chunks_in_vector_store(chunks: List[Chunk], collection_name: str = "pdf_collection") -> Qdrant:    
     documents = create_langchain_documents(chunks)
-    embeddings = OpenAIEmbeddings()
-    vector_store = FAISS.from_documents(documents, embeddings)
-    vector_store.save_local(save_path)
-    
+    vector_store = get_vector_store()
+    vector_store.add_documents(documents)
     return vector_store
