@@ -4,28 +4,34 @@ from dotenv import load_dotenv
 from langchain_openai import OpenAI
 from langchain.chains import RetrievalQA
 from qdrant_client.models import Filter, FieldCondition, MatchValue
-from pdf_processing.vector_store import get_vector_store
+from pdf_processing.vector_store import get_vector_store, VectorDB
+from weaviate.classes.query import Filter as WeaviateFilter
 
-def ask_question(pdf_id: str, question: str, top_k: int = 1) -> dict:
-    filter_condition = Filter(
-        must=[
-            FieldCondition(
-                key="metadata.pdf_id",
-                match=MatchValue(value=pdf_id)
-            )
-        ]
-    )
+def ask_question(pdf_id: str, question: str, vdb: VectorDB = VectorDB.QDRANT, top_k: int = 1) -> dict:
+    vector_store = get_vector_store(vdb)
     
-    vector_store = get_vector_store()
+    if vdb == VectorDB.QDRANT:
+        filter_condition = Filter(
+            must=[
+                FieldCondition(
+                    key="metadata.pdf_id",
+                    match=MatchValue(value=pdf_id)
+                )
+            ]
+        )
+        search_kwargs = {
+            "k": top_k,
+            "filter": filter_condition
+        }
+    else:
+        search_kwargs = {
+            "k": top_k,
+            "filters": WeaviateFilter.by_property("pdf_id").equal(pdf_id)
+        }
     
     qa = RetrievalQA.from_chain_type(
         llm=OpenAI(),
-        retriever=vector_store.as_retriever(
-            search_kwargs={
-                "k": top_k,
-                "filter": filter_condition
-            }
-        ),
+        retriever=vector_store.as_retriever(search_kwargs=search_kwargs),
         return_source_documents=True
     )
     
@@ -54,9 +60,10 @@ def format_source_document(doc):
 if __name__ == "__main__":
     load_dotenv()
     
-    # Set up argument parser
     parser = argparse.ArgumentParser(description='Ask questions about a processed PDF')
     parser.add_argument('pdf_id', help='PDF ID of the processed document')
+    parser.add_argument('--vdb', type=str, choices=[vdb.value for vdb in VectorDB], 
+                       default=VectorDB.QDRANT.value, help='Vector database to use')
     parser.add_argument('--top-k', type=int, default=1, help='Number of similar documents to retrieve')
     
     args = parser.parse_args()
@@ -67,21 +74,18 @@ if __name__ == "__main__":
         if query.strip().lower() == "exit":
             break
             
-        result = ask_question(args.pdf_id, query, args.top_k)
+        result = ask_question(args.pdf_id, query, VectorDB(args.vdb), args.top_k)
         
-        # Print answer
         print("\n" + "="*80)
         print("\n💡 Answer:")
         print(result['answer'])
         
-        # Print sources
         print("\n" + "="*80)
         print("\n📚 Sources:")
         for i, doc in enumerate(result['sources'], 1):
             print(f"\n[{i}] " + "-"*76)
             print(format_source_document(doc))
             
-            # Print highlights in a more compact format
             highlights = []
             if "title" in doc.metadata:
                 highlights.append({

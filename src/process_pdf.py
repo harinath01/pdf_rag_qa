@@ -4,7 +4,7 @@ import uuid
 from typing import Optional
 from pdf_processing.parser import parse_pdf_to_json
 from pdf_processing.chunker import chunk_json_output
-from pdf_processing.vector_store import get_vector_store
+from pdf_processing.vector_store import get_vector_store, VectorDB
 from langchain.schema import Document
 
 def create_langchain_documents(chunks, pdf_id: str):
@@ -42,14 +42,14 @@ def create_langchain_documents(chunks, pdf_id: str):
     
     return documents
 
-def process_pdf(pdf_path: str, page_range: Optional[str] = None) -> str:
+def process_pdf(pdf_path: str, vdb: VectorDB = VectorDB.QDRANT, page_range: Optional[str] = None) -> str:
     pdf_id = str(uuid.uuid4())
     
     result = parse_pdf_to_json(pdf_path, page_range=page_range)
     chunks = chunk_json_output(result)
     documents = create_langchain_documents(chunks, pdf_id)
     
-    vector_store = get_vector_store()
+    vector_store = get_vector_store(vdb)
     vector_store.add_documents(documents)
     
     return pdf_id
@@ -57,15 +57,18 @@ def process_pdf(pdf_path: str, page_range: Optional[str] = None) -> str:
 if __name__ == "__main__":
     load_dotenv()
     
-    parser = argparse.ArgumentParser(description='Process a PDF file and store it in Qdrant')
+    parser = argparse.ArgumentParser(description='Process a PDF file and store it in vector database')
     parser.add_argument('pdf_path', help='Path to the PDF file')
+    parser.add_argument('--vdb', type=str, choices=[vdb.value for vdb in VectorDB], 
+                       default=VectorDB.QDRANT.value, help='Vector database to use')
     parser.add_argument('--page_range', type=str, default=None, help='Page range to process (e.g., "1-10")')
     
     args = parser.parse_args()
     
-    pdf_id = process_pdf(args.pdf_path, args.page_range)
+    pdf_id = process_pdf(args.pdf_path, VectorDB(args.vdb), args.page_range)
     
     print(f"\n✅ PDF processed successfully!")
     print(f"📚 PDF ID: {pdf_id}")
+    print(f"💾 Vector DB: {args.vdb}")
     print("\nUse this ID to ask questions about the document:")
-    print(f"python ask_question.py {pdf_id}") 
+    print(f"python ask_question.py {pdf_id} --vdb {args.vdb}") 

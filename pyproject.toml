@@ -20,6 +20,8 @@ langchain-openai = "^0.3.17"
 faiss-cpu = "^1.11.0"
 langchain = "^0.3.25"
 langchain-qdrant = "^0.2.0"
+langchain-weaviate = { git = "https://github.com/langchain-ai/langchain-weaviate.git", branch = "fix-numpy-old-dep", subdirectory = "libs/weaviate" }
+
 
 [tool.poetry]
 package-mode = false
